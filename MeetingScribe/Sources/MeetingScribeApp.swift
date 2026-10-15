@@ -8,7 +8,7 @@ struct MeetingScribeApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 813, idealWidth: 813)
+                .frame(minWidth: 830, idealWidth: 830)
         }
         .windowResizability(.contentMinSize)
         .commands {
@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let screen = NSScreen.main, let window = NSApp.windows.first else { return }
 
         let visibleFrame = screen.visibleFrame
-        let width: CGFloat = 813
+        let width: CGFloat = 830
         let origin = CGPoint(x: visibleFrame.maxX - width, y: visibleFrame.minY)
         let frame = CGRect(origin: origin, size: CGSize(width: width, height: visibleFrame.height))
 
