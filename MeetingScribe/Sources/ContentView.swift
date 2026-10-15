@@ -593,6 +593,22 @@ struct ContentView: View {
                             )
                             .padding(.horizontal, 22)
                             .padding(.top, 4)
+                    } else {
+                        // Catch-all for an empty summary with no recorded error (e.g. a session
+                        // saved before summarization ever ran) so a retry path is always visible.
+                        VStack(spacing: 10) {
+                            Text("No summary yet.")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                            Button {
+                                viewModel.summarize()
+                            } label: {
+                                Label("Generate Summary", systemImage: "arrow.clockwise")
+                            }
+                            .buttonStyle(PillButtonStyle(tint: .accentColor, size: .compact, prominent: true))
+                        }
+                        .padding(.top, 50)
+                        .padding(.horizontal, 30)
                     }
                 }
                 .padding(.bottom, 20)

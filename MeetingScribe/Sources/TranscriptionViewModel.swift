@@ -260,7 +260,7 @@ final class TranscriptionViewModel: ObservableObject {
         detectedLanguageLabel = session.detectedLanguageLabel
         summary = session.summary
         summaryStyle = SummaryStyle(rawValue: session.summaryStyle) ?? .short
-        summaryError = nil
+        summaryError = session.summary.isEmpty ? "Summarization didn't complete for this session." : nil
         isSummarizing = false
 
         originalSegments = session.originalSegments.map {
