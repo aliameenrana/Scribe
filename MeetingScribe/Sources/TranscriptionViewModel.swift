@@ -216,6 +216,11 @@ final class TranscriptionViewModel: ObservableObject {
         summarize()
     }
 
+    func updateSummary(_ newText: String) {
+        summary = newText
+        saveToHistory()
+    }
+
     func updateSegment(_ id: UUID, text: String) {
         guard let index = segments.firstIndex(where: { $0.id == id }) else { return }
         segments[index].text = text

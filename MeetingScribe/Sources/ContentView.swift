@@ -14,6 +14,8 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var hasAPIKey = KeychainStore.load() != nil
     @State private var showSectionBySection = false
+    @State private var isEditingSummary = false
+    @State private var summaryDraft = ""
 
     private enum ResultTab: String, CaseIterable {
         case transcript = "Transcript"
@@ -35,6 +37,7 @@ struct ContentView: View {
                         viewModel.loadFromHistory(session)
                         activeTab = .transcript
                         showSectionBySection = false
+                        isEditingSummary = false
                     },
                     onDelete: { session in
                         if selectedSessionID == session.id {
@@ -124,6 +127,7 @@ struct ContentView: View {
                         selectedSessionID = nil
                         activeTab = .transcript
                         showSectionBySection = false
+                        isEditingSummary = false
                     }
                 } label: {
                     Label("New Transcript", systemImage: "plus.circle.fill")
@@ -542,7 +546,26 @@ struct ContentView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else if !viewModel.summary.isEmpty {
+                    if isEditingSummary {
+                        Button {
+                            viewModel.updateSummary(summaryDraft)
+                            isEditingSummary = false
+                        } label: {
+                            Label("Done", systemImage: "checkmark")
+                        }
+                        .buttonStyle(PillButtonStyle(tint: .accentColor, size: .compact, prominent: true))
+                    } else {
+                        Button {
+                            summaryDraft = viewModel.summary
+                            isEditingSummary = true
+                        } label: {
+                            Label("Edit Summary", systemImage: "pencil")
+                        }
+                        .buttonStyle(PillButtonStyle(tint: .secondary, size: .compact))
+                    }
+
                     Button {
+                        isEditingSummary = false
                         viewModel.summarize()
                     } label: {
                         Label("Regenerate", systemImage: "arrow.clockwise")
@@ -581,18 +604,24 @@ struct ContentView: View {
                         .padding(.top, 50)
                         .padding(.horizontal, 30)
                     } else if !viewModel.summary.isEmpty {
-                        Text(viewModel.summary)
-                            .font(.system(size: 14))
-                            .lineSpacing(5)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(18)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(.white.opacity(0.65))
-                            )
-                            .padding(.horizontal, 22)
-                            .padding(.top, 4)
+                        if isEditingSummary {
+                            TextEditor(text: $summaryDraft)
+                                .font(.system(size: 14, design: .monospaced))
+                                .lineSpacing(5)
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 300)
+                                .padding(14)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .fill(.white.opacity(0.75))
+                                )
+                                .padding(.horizontal, 22)
+                                .padding(.top, 4)
+                        } else {
+                            FormattedSummaryView(markdown: viewModel.summary)
+                                .padding(.horizontal, 22)
+                                .padding(.top, 4)
+                        }
                     } else {
                         // Catch-all for an empty summary with no recorded error (e.g. a session
                         // saved before summarization ever ran) so a retry path is always visible.
@@ -613,6 +642,48 @@ struct ContentView: View {
                 }
                 .padding(.bottom, 20)
             }
+        }
+    }
+
+    private struct FormattedSummaryView: View {
+        let markdown: String
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(Array(SummaryMarkdown.parse(markdown).enumerated()), id: \.element.id) { index, block in
+                    switch block {
+                    case .header(let text):
+                        Text(text)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.top, index == 0 ? 0 : 6)
+                    case .bullet(let text):
+                        HStack(alignment: .top, spacing: 10) {
+                            Circle()
+                                .fill(Color.accentColor.opacity(0.5))
+                                .frame(width: 5, height: 5)
+                                .padding(.top, 7)
+                            Text(text)
+                                .font(.system(size: 14))
+                                .lineSpacing(4)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    case .paragraph(let text):
+                        Text(text)
+                            .font(.system(size: 14))
+                            .lineSpacing(4)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.white.opacity(0.65))
+            )
         }
     }
 
