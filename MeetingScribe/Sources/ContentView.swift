@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var selectedSessionID: UUID?
     @State private var showSettings = false
     @State private var hasAPIKey = KeychainStore.load() != nil
+    @State private var showSectionBySection = false
 
     private enum ResultTab: String, CaseIterable {
         case transcript = "Transcript"
@@ -33,6 +34,7 @@ struct ContentView: View {
                         selectedSessionID = session.id
                         viewModel.loadFromHistory(session)
                         activeTab = .transcript
+                        showSectionBySection = false
                     },
                     onDelete: { session in
                         if selectedSessionID == session.id {
@@ -121,6 +123,7 @@ struct ContentView: View {
                         viewModel.reset()
                         selectedSessionID = nil
                         activeTab = .transcript
+                        showSectionBySection = false
                     }
                 } label: {
                     Label("New Transcript", systemImage: "plus.circle.fill")
@@ -379,9 +382,17 @@ struct ContentView: View {
                 .padding(.top, 10)
             }
 
+            if activeTab == .transcript {
+                sectionToggleBar
+            }
+
             Group {
                 if activeTab == .transcript {
-                    transcriptList
+                    if showSectionBySection {
+                        transcriptList
+                    } else {
+                        fullTranscriptView
+                    }
                 } else {
                     summaryPane
                 }
@@ -449,6 +460,43 @@ struct ContentView: View {
         )
         .padding(.horizontal, 22)
         .padding(.top, 14)
+    }
+
+    private var sectionToggleBar: some View {
+        HStack {
+            Spacer()
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showSectionBySection.toggle()
+                }
+            } label: {
+                Label(
+                    showSectionBySection ? "Full Transcript" : "Section by Section",
+                    systemImage: showSectionBySection ? "doc.text" : "list.bullet.rectangle.portrait"
+                )
+            }
+            .buttonStyle(PillButtonStyle(tint: .secondary, size: .compact))
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 14)
+    }
+
+    private var fullTranscriptView: some View {
+        ScrollView {
+            Text(viewModel.transcript)
+                .font(.system(size: 14.5))
+                .lineSpacing(6)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.white.opacity(0.65))
+                )
+                .padding(.horizontal, 22)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
+        }
     }
 
     private var transcriptList: some View {

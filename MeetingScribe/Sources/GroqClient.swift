@@ -94,15 +94,22 @@ enum GroqClient {
         return ChunkResult(text: decoded.text, segments: segments, detectedLanguage: decoded.language)
     }
 
-    /// Groq's on-demand tier caps gpt-oss-120b at 8000 tokens/minute, which a single request
-    /// for a long meeting transcript can exceed on its own (prompt + completion). Rather than
-    /// overlapping audio-style chunks (meant for continuity across a cut, not needed for text
-    /// already in full), transcripts are split at segment boundaries into token-budgeted pieces,
-    /// summarized independently (map), then merged into one final pass (reduce). This also keeps
-    /// each request's completion short, since partial summaries are a fraction of the raw text.
+    /// Groq's on-demand tier caps gpt-oss-120b at 8000 tokens/minute — confirmed live via the
+    /// x-ratelimit-limit-tokens response header, and it is a HARD per-minute ceiling across every
+    /// request this key makes, not per-request. gpt-oss-120b also burns a hidden "reasoning" pass
+    /// before its real answer (seen eating 500+ tokens on trivial prompts), so completions cost far
+    /// more than they look like from the output alone. Rather than overlapping audio-style chunks
+    /// (meant for continuity across a cut, not needed for text already in full), transcripts are
+    /// split at segment boundaries into token-budgeted pieces, summarized independently (map), then
+    /// merged into one final pass (reduce). Chunks are kept small and requests are paced with a
+    /// delay between them so consecutive map-reduce calls don't stack inside the same rolling
+    /// minute window and blow the shared TPM budget even though each one looks small alone.
     private static let charsPerTokenEstimate = 4.0
-    private static let maxPromptTokens = 3000
+    private static let maxPromptTokens = 1200
     private static var maxPromptChars: Int { Int(Double(maxPromptTokens) * charsPerTokenEstimate) }
+    private static let interChunkDelay: TimeInterval = 4
+    private static let maxRetriesPerRequest = 8
+    private static let summaryBaseRetryDelay: TimeInterval = 2
 
     static func summarize(transcript: String, style: SummaryStyle, apiKey: String) async throws -> String {
         try await summarize(segments: [transcript], style: style, apiKey: apiKey)
@@ -119,11 +126,15 @@ enum GroqClient {
         }
 
         var partials: [String] = []
-        for chunk in chunks {
+        for (index, chunk) in chunks.enumerated() {
+            if index > 0 {
+                try await Task.sleep(nanoseconds: UInt64(interChunkDelay * 1_000_000_000))
+            }
             let partial = try await summarizeSingle(transcript: chunk, style: style, apiKey: apiKey, isPartial: true)
             partials.append(partial)
         }
 
+        try await Task.sleep(nanoseconds: UInt64(interChunkDelay * 1_000_000_000))
         return try await mergePartialSummaries(partials, style: style, apiKey: apiKey)
     }
 
@@ -193,6 +204,24 @@ enum GroqClient {
     }
 
     private static func chatCompletion(system: String, user: String, apiKey: String) async throws -> String {
+        var attempt = 0
+        while true {
+            do {
+                return try await chatCompletionOnce(system: system, user: user, apiKey: apiKey)
+            } catch let error as RateLimitError {
+                attempt += 1
+                if attempt >= maxRetriesPerRequest {
+                    throw TranscriptionError.rateLimited
+                }
+                let backoff = min(summaryBaseRetryDelay * pow(2, Double(attempt - 1)), 60)
+                let jitter = Double.random(in: 0...(backoff * 0.25))
+                let delay = error.retryAfter ?? (backoff + jitter)
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+        }
+    }
+
+    private static func chatCompletionOnce(system: String, user: String, apiKey: String) async throws -> String {
         var request = URLRequest(url: chatEndpoint)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
